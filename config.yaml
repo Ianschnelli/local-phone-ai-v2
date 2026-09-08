@@ -1,0 +1,80 @@
+audio:
+  transport_sample_rate: 16000
+  processing_sample_rate: 16000
+
+vad:
+  provider: silero
+  confidence: 0.7
+  start_secs: 0.2
+  stop_secs: 0.2
+  min_volume: 0.6
+
+turn:
+  provider: smart_turn
+  device: cpu
+  user_speech_timeout: 1.5
+
+stt:
+  provider: faster_whisper
+  model: small
+  device: cpu
+  language: de
+
+llm:
+  provider: ollama
+  model: qwen3:4b-instruct-2507-q4_K_M
+  thinking: false
+  # steuert, wie kreativ/variabel die Antwort ist. 
+  # Niedriger = berechenbarer und sachlicher, höher = freier und abwechslungsreicher.
+  temperature: 0.5
+  # begrenzt zusätzlich, aus wie vielen wahrscheinlichen nächsten Wörtern Qwen auswählt. 
+  # Niedriger = konservativer, höher = offener.
+  #temperature: 0.15–0.3
+  # top_p: 0.6–0.8
+  top_p: 0.8
+  # begrenzt, wie lang die Antwort maximal werden darf. 
+  #Für Telefonie ist das sinnvoll, damit Qwen nicht minutenlang redet.
+  max_tokens: 160
+
+  context_window: 8192
+  tokenizer_model: Qwen/Qwen3-4B-Instruct-2507
+  response_reserve_tokens: 512
+
+tts:
+  provider: piper
+  model: de_DE-thorsten-high
+  device: cpu
+  language: de
+
+conversation:
+  compact_at_ratio: 0.69
+  recent_turn_pairs: 3
+  max_compactions: 1
+  summary_max_tokens: 300
+  rag_reserve_tokens: 1200
+
+rag:
+  enabled: true
+
+  embedding_model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  sparse_model: Qdrant/bm25
+
+  candidate_k: 8
+  final_k: 3
+
+  query_timeout_secs: 0.5
+  reranker_timeout_secs: 3.0
+
+  reranker:
+    enabled: true
+    model: cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
+    device: cpu
+    min_score: -2.0
+    score_window: 1.5
+
+  qdrant_path: data/qdrant
+  collection: knowledge
+
+customer:
+  facts_path: "customers/test_customer/facts.yaml"
+
