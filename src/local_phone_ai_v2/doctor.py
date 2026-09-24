@@ -1,40 +1,204 @@
-import subprocess
-import ctranslate2
+import json
 from pathlib import Path
+from urllib import error, request
 
-from local_phone_ai_v2.config.loader import load_config
-from local_phone_ai_v2.config.validate import validate_config
-from local_phone_ai_v2.services.stt import create_stt
-
+import ctranslate2
 from fastembed import (
     SparseTextEmbedding,
     TextEmbedding,
 )
+from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder
 
-from qdrant_client import QdrantClient
-
+from local_phone_ai_v2.config.loader import load_config
+from local_phone_ai_v2.config.validate import validate_config
+from local_phone_ai_v2.services.stt import create_stt
 from local_phone_ai_v2.services.turn import (
     create_turn_analyzer,
 )
+
 
 def check_config(config: dict) -> None:
     validate_config(config)
     print("[OK] Config")
 
+def _lm_studio_request(
+    url: str,
+    api_key: str,
+    payload: dict | None = None,
+    timeout: int = 10,
+) -> dict:
+    headers = {
+        "Content-Type": "application/json",
+    }
 
-def check_ollama(model: str) -> None:
-    result = subprocess.run(
-        ["ollama", "list"],
-        capture_output=True,
-        text=True,
-        check=True,
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    data = None
+
+    if payload is not None:
+        data = json.dumps(
+            payload
+        ).encode("utf-8")
+
+    req = request.Request(
+        url,
+        data=data,
+        headers=headers,
+        method="POST" if payload is not None else "GET",
     )
 
-    if model not in result.stdout:
-        raise RuntimeError(f"Ollama model missing: {model}")
+    try:
+        with request.urlopen(
+            req,
+            timeout=timeout,
+        ) as response:
+            body = response.read().decode("utf-8")
 
-    print(f"[OK] Ollama model: {model}")
+    except error.HTTPError as exc:
+        body = exc.read().decode(
+            "utf-8",
+            errors="replace",
+        )
+
+        raise RuntimeError(
+            f"LM Studio request failed with HTTP "
+            f"{exc.code}: {body}"
+        ) from exc
+
+    except error.URLError as exc:
+        raise RuntimeError(
+            f"LM Studio is not reachable: {url}"
+        ) from exc
+
+    try:
+        return json.loads(body)
+
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            "LM Studio returned invalid JSON."
+        ) from exc
+
+
+def check_lm_studio(config: dict) -> None:
+    base_url = config["base_url"].rstrip("/")
+    api_key = config["api_key"]
+    model = config["model"]
+
+    models_response = _lm_studio_request(
+        f"{base_url}/models",
+        api_key,
+    )
+
+    available_models = {
+        item["id"]
+        for item in models_response.get("data", [])
+        if isinstance(item, dict)
+        and "id" in item
+    }
+
+    if model not in available_models:
+        raise RuntimeError(
+            f"LM Studio model missing: {model}. "
+            f"Available models: {sorted(available_models)}"
+        )
+
+    print(
+        f"[OK] LM Studio model: {model}"
+    )
+
+    completion = _lm_studio_request(
+        f"{base_url}/chat/completions",
+        api_key,
+        {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": (
+                        "Antworte ausschließlich "
+                        "mit dem Wort TEST."
+                    ),
+                }
+            ],
+            "temperature": 0,
+            "max_tokens": 32,
+            "stream": False,
+        },
+        timeout=120,
+    )
+
+    choices = completion.get("choices", [])
+
+    if not choices:
+        raise RuntimeError(
+            "LM Studio returned no completion choices."
+        )
+
+    message = choices[0].get(
+        "message",
+        {},
+    )
+
+    content = message.get("content")
+
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError(
+            "LM Studio returned an empty completion."
+        )
+
+    print("[OK] LM Studio completion")
+
+    if config.get("thinking") is not False:
+        return
+
+    reasoning_content_available = (
+        "reasoning_content" in message
+    )
+
+    reasoning_content = message.get(
+        "reasoning_content"
+    )
+
+    completion_details = (
+        completion
+        .get("usage", {})
+        .get("completion_tokens_details", {})
+    )
+
+    reasoning_tokens_available = (
+        "reasoning_tokens" in completion_details
+    )
+
+    reasoning_tokens = completion_details.get(
+        "reasoning_tokens"
+    )
+
+    if (
+        not reasoning_content_available
+        and not reasoning_tokens_available
+    ):
+        raise RuntimeError(
+            "Non-Thinking cannot be verified because "
+            "LM Studio returned neither reasoning_content "
+            "nor reasoning_tokens."
+        )
+
+    if reasoning_content:
+        raise RuntimeError(
+            "Thinking is active in LM Studio. "
+            "Disable 'Enable Thinking' for this model."
+        )
+
+    if reasoning_tokens not in (None, 0):
+        raise RuntimeError(
+            "Thinking is active in LM Studio "
+            f"(reasoning_tokens={reasoning_tokens}). "
+            "Disable 'Enable Thinking' for this model."
+        )
+
+    print("[OK] LM Studio Non-Thinking")
 
 
 def check_stt(config: dict) -> None:
@@ -252,7 +416,7 @@ def main() -> None:
     print("Local Phone AI V2 doctor")
 
     check_config(config)
-    check_ollama(config["llm"]["model"])
+    check_lm_studio(config["llm"])
     check_stt_runtime(config["stt"])
     check_stt(config["stt"])
 

@@ -1,6 +1,6 @@
 from pipecat.services.whisper.stt import WhisperSTTService
-from local_phone_ai_v2.config.languages import get_language
 
+from local_phone_ai_v2.config.languages import get_language
 
 
 def create_stt(config: dict) -> WhisperSTTService:

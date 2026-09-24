@@ -11,7 +11,6 @@ from local_phone_ai_v2.knowledge.fact_renderer import (
     render_phone_number,
 )
 
-
 WEEKDAY_KEYWORDS = {
     "montag": "monday",
     "montags": "monday",
@@ -89,7 +88,7 @@ class StructuredFactProvider:
             data = yaml.safe_load(file)
 
         if not isinstance(data, dict):
-            raise ValueError(
+            raise TypeError(
                 "Structured facts must contain "
                 "a YAML object."
             )

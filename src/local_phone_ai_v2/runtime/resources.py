@@ -1,18 +1,18 @@
+from pathlib import Path
+
+from local_phone_ai_v2.conversation.summary import (
+    CallSummarizer,
+)
+from local_phone_ai_v2.knowledge.facts import (
+    StructuredFactProvider,
+)
 from local_phone_ai_v2.knowledge.reranker import (
     KnowledgeReranker,
 )
 from local_phone_ai_v2.knowledge.retriever import (
     KnowledgeRetriever,
 )
-from local_phone_ai_v2.conversation.summary import (
-    CallSummarizer,
-)
 
-from pathlib import Path
-
-from local_phone_ai_v2.knowledge.facts import (
-    StructuredFactProvider,
-)
 
 class RuntimeResources:
     def __init__(self, config: dict) -> None:
@@ -37,6 +37,8 @@ class RuntimeResources:
 
         
         self.summarizer = CallSummarizer(
+            base_url=config["llm"]["base_url"],
+            api_key=config["llm"]["api_key"],
             model=config["llm"]["model"],
             max_tokens=config["conversation"]["summary_max_tokens"],
         )

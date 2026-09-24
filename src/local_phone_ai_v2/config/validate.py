@@ -34,7 +34,136 @@ def validate_config(config: dict) -> None:
                 "Use 'cpu' or 'cuda'."
             )
 
-    thinking = config["llm"].get(
+    llm = config["llm"]
+
+    if not isinstance(
+        llm,
+        dict,
+    ):
+        raise TypeError(
+            "llm must be a section."
+        )
+
+    provider = llm.get(
+        "provider"
+    )
+
+    if provider != "lm_studio":
+        raise ValueError(
+            "llm.provider must be 'lm_studio'."
+        )
+
+    base_url = llm.get(
+        "base_url"
+    )
+
+    if (
+        not isinstance(
+            base_url,
+            str,
+        )
+        or not base_url.strip()
+    ):
+        raise ValueError(
+            "llm.base_url must be "
+            "a non-empty string."
+        )
+
+    if not base_url.startswith(
+        ("http://", "https://")
+    ):
+        raise ValueError(
+            "llm.base_url must start with "
+            "'http://' or 'https://'."
+        )
+
+    api_key = llm.get(
+        "api_key"
+    )
+
+    if (
+        not isinstance(
+            api_key,
+            str,
+        )
+        or not api_key.strip()
+    ):
+        raise ValueError(
+            "llm.api_key must be "
+            "a non-empty string."
+        )
+
+    model = llm.get(
+        "model"
+    )
+
+    if (
+        not isinstance(
+            model,
+            str,
+        )
+        or not model.strip()
+    ):
+        raise ValueError(
+            "llm.model must be "
+            "a non-empty string."
+        )
+
+    tokenizer_model = llm.get(
+        "tokenizer_model"
+    )
+
+    if (
+        not isinstance(
+            tokenizer_model,
+            str,
+        )
+        or not tokenizer_model.strip()
+    ):
+        raise ValueError(
+            "llm.tokenizer_model must be "
+            "a non-empty string."
+        )
+
+    context_window = llm.get(
+        "context_window"
+    )
+
+    if (
+        not isinstance(
+            context_window,
+            int,
+        )
+        or context_window < 1
+    ):
+        raise ValueError(
+            "llm.context_window must be "
+            "a positive integer."
+        )
+
+    response_reserve_tokens = llm.get(
+        "response_reserve_tokens"
+    )
+
+    if (
+        not isinstance(
+            response_reserve_tokens,
+            int,
+        )
+        or response_reserve_tokens < 1
+    ):
+        raise ValueError(
+            "llm.response_reserve_tokens must be "
+            "a positive integer."
+        )
+
+    if response_reserve_tokens >= context_window:
+        raise ValueError(
+            "llm.response_reserve_tokens must be "
+            "smaller than llm.context_window."
+        )
+
+    thinking = llm.get(
         "thinking"
     )
 
@@ -45,19 +174,19 @@ def validate_config(config: dict) -> None:
             bool,
         )
     ):
-        raise ValueError(
+        raise TypeError(
             "llm.thinking must be true or false."
         )
 
-    temperature = config["llm"].get(
+    temperature = llm.get(
         "temperature"
     )
 
-    top_p = config["llm"].get(
+    top_p = llm.get(
         "top_p"
     )
 
-    max_tokens = config["llm"].get(
+    max_tokens = llm.get(
         "max_tokens"
     )
 
@@ -65,7 +194,7 @@ def validate_config(config: dict) -> None:
         temperature,
         (int, float),
     ):
-        raise ValueError(
+        raise TypeError(
             "llm.temperature must be a number."
         )
 
@@ -79,7 +208,7 @@ def validate_config(config: dict) -> None:
         top_p,
         (int, float),
     ):
-        raise ValueError(
+        raise TypeError(
             "llm.top_p must be a number."
         )
 
@@ -107,7 +236,7 @@ def validate_config(config: dict) -> None:
         rag,
         dict,
     ):
-        raise ValueError(
+        raise TypeError(
             "rag must be a section."
         )
 
@@ -119,7 +248,7 @@ def validate_config(config: dict) -> None:
         enabled,
         bool,
     ):
-        raise ValueError(
+        raise TypeError(
             "rag.enabled must be true or false."
         )
 

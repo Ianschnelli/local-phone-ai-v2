@@ -1,6 +1,5 @@
 import re
 
-
 FOLLOW_UP_PATTERN = re.compile(
     r"^\s*("
     r"und\s+)?("

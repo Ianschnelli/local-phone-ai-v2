@@ -18,7 +18,7 @@ def load_customer_config(
         data = yaml.safe_load(file)
 
     if not isinstance(data, dict):
-        raise ValueError(
+        raise TypeError(
             f"Invalid customer configuration: {path}"
         )
 

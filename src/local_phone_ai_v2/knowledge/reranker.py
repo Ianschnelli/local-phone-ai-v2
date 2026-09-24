@@ -1,7 +1,8 @@
+from loguru import logger
 from sentence_transformers import CrossEncoder
 
 from .retriever import KnowledgeHit
-from loguru import logger
+
 
 class KnowledgeReranker:
     def __init__(
@@ -23,18 +24,54 @@ class KnowledgeReranker:
         if not hits:
             return []
 
-        pairs = [
-            (query, hit.text)
+        raw_pairs = [
+            (
+                query,
+                hit.text,
+            )
             for hit in hits
         ]
 
-        scores = self._model.predict(
-            pairs
+        embedding_pairs = [
+            (
+                query,
+                hit.embedding_text,
+            )
+            for hit in hits
+        ]
+
+        raw_scores = self._model.predict(
+            raw_pairs
         )
 
+        embedding_scores = self._model.predict(
+            embedding_pairs
+        )
+
+        scored = [
+            (
+                hit,
+                float(raw_score),
+                float(embedding_score),
+                (
+                    float(raw_score)
+                    + float(embedding_score)
+                ) / 2,
+            )
+            for (
+                hit,
+                raw_score,
+                embedding_score,
+            ) in zip(
+                hits,
+                raw_scores,
+                embedding_scores,
+            )
+        ]
+
         ranked = sorted(
-            zip(hits, scores),
-            key=lambda item: float(item[1]),
+            scored,
+            key=lambda item: item[3],
             reverse=True,
         )
 
@@ -43,10 +80,26 @@ class KnowledgeReranker:
             [
                 {
                     "rank": index,
-                    "score": round(float(score), 4),
+                    "score": round(
+                        combined_score,
+                        4,
+                    ),
+                    "raw_score": round(
+                        raw_score,
+                        4,
+                    ),
+                    "embedding_score": round(
+                        embedding_score,
+                        4,
+                    ),
                     "preview": hit.text[:120],
                 }
-                for index, (hit, score) in enumerate(
+                for index, (
+                    hit,
+                    raw_score,
+                    embedding_score,
+                    combined_score,
+                ) in enumerate(
                     ranked,
                     start=1,
                 )
@@ -56,8 +109,14 @@ class KnowledgeReranker:
         return [
             KnowledgeHit(
                 text=hit.text,
-                score=float(score),
+                embedding_text=hit.embedding_text,
+                score=combined_score,
                 content_hash=hit.content_hash,
             )
-            for hit, score in ranked
+            for (
+                hit,
+                _raw_score,
+                _embedding_score,
+                combined_score,
+            ) in ranked
         ]

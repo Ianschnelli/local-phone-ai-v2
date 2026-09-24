@@ -7,7 +7,6 @@ from local_phone_ai_v2.services.german_text_rules import (
     NUMBERED_UNITS,
 )
 
-
 NUM_TO_WORD = {
     0: "null",
     1: "eins",

@@ -1,6 +1,5 @@
 from pipecat.transcriptions.language import Language
 
-
 LANGUAGES = {
     "de": Language.DE,
     "en": Language.EN,

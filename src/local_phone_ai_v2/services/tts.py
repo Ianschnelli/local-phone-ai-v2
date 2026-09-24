@@ -1,18 +1,16 @@
 from pathlib import Path
 
 from pipecat.services.kokoro.tts import KokoroTTSService
-from pipecat.transcriptions.language import Language
-
-from local_phone_ai_v2.config.languages import get_language
-from local_phone_ai_v2.services.tts_normalizer import normalize_tts_text
-
 from pipecat.services.tts_service import (
     TTSService,
 )
+from pipecat.transcriptions.language import Language
 
+from local_phone_ai_v2.config.languages import get_language
 from local_phone_ai_v2.services.piper_tts import (
     create_piper_tts,
 )
+from local_phone_ai_v2.services.tts_normalizer import normalize_tts_text
 
 
 class GermanKokoroTTSService(KokoroTTSService):

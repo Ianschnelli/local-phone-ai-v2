@@ -1,10 +1,15 @@
+from dataclasses import dataclass
+
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
-from pipecat.turns.user_start import VADUserTurnStartStrategy
+from pipecat.turns.user_start import (
+    TranscriptionUserTurnStartStrategy,
+    VADUserTurnStartStrategy,
+)
 from pipecat.turns.user_stop import (
     SpeechTimeoutUserTurnStopStrategy,
     TurnAnalyzerUserTurnStopStrategy,
@@ -12,18 +17,13 @@ from pipecat.turns.user_stop import (
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
 from local_phone_ai_v2.conversation.instructions import build_instructions
+from local_phone_ai_v2.knowledge.processor import KnowledgeContextProcessor
+from local_phone_ai_v2.runtime.resources import RuntimeResources
 from local_phone_ai_v2.services.llm import create_llm
 from local_phone_ai_v2.services.stt import create_stt
 from local_phone_ai_v2.services.tts import create_tts
 from local_phone_ai_v2.services.turn import create_turn_analyzer
 from local_phone_ai_v2.services.vad import create_vad
-from local_phone_ai_v2.runtime.resources import RuntimeResources
-from local_phone_ai_v2.knowledge.processor import KnowledgeContextProcessor
-from dataclasses import dataclass
-
-from pipecat.pipeline.pipeline import Pipeline
-from pipecat.processors.aggregators.llm_context import LLMContext
-
 
 
 @dataclass
@@ -90,7 +90,8 @@ def build_pipeline(
                 start=[
                     VADUserTurnStartStrategy(
                         enable_interruptions=True,
-                    )
+                    ),
+                    TranscriptionUserTurnStartStrategy(),
                 ],
                 stop=[
                     TurnAnalyzerUserTurnStopStrategy(

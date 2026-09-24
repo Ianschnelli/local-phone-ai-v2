@@ -7,9 +7,6 @@ from local_phone_ai_v2.config.validate import validate_config
 from local_phone_ai_v2.conversation.customer_loader import (
     load_customer_config,
 )
-from local_phone_ai_v2.conversation.instructions import (
-    build_instructions,
-)
 from local_phone_ai_v2.conversation.session import CallSession
 from local_phone_ai_v2.runtime.resources import RuntimeResources
 from local_phone_ai_v2.runtime.warmup import warmup_qwen
@@ -29,10 +26,6 @@ async def main() -> None:
         customer = load_customer_config(
             Path("customers"),
             "test_customer",
-        )
-
-        system_instruction = build_instructions(
-            customer["instructions"]
         )
 
         transport = create_local_transport()

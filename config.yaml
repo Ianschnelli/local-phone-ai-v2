@@ -16,28 +16,21 @@ turn:
 
 stt:
   provider: faster_whisper
-  model: small
-  device: cpu
+  model: large-v3-turbo
+  device: cuda
   language: de
 
 llm:
-  provider: ollama
-  model: qwen3:4b-instruct-2507-q4_K_M
+  provider: lm_studio
+  base_url: http://localhost:1234/v1
+  api_key: lm-studio
+  model: qwen/qwen3-14b
   thinking: false
-  # steuert, wie kreativ/variabel die Antwort ist. 
-  # Niedriger = berechenbarer und sachlicher, höher = freier und abwechslungsreicher.
   temperature: 0.5
-  # begrenzt zusätzlich, aus wie vielen wahrscheinlichen nächsten Wörtern Qwen auswählt. 
-  # Niedriger = konservativer, höher = offener.
-  #temperature: 0.15–0.3
-  # top_p: 0.6–0.8
   top_p: 0.8
-  # begrenzt, wie lang die Antwort maximal werden darf. 
-  #Für Telefonie ist das sinnvoll, damit Qwen nicht minutenlang redet.
   max_tokens: 160
-
   context_window: 8192
-  tokenizer_model: Qwen/Qwen3-4B-Instruct-2507
+  tokenizer_model: Qwen/Qwen3-14B
   response_reserve_tokens: 512
 
 tts:
@@ -69,7 +62,7 @@ rag:
     enabled: true
     model: cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
     device: cpu
-    min_score: -2.0
+    min_score: -2.3
     score_window: 1.5
 
   qdrant_path: data/qdrant

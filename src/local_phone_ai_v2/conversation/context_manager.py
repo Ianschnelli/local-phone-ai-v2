@@ -1,13 +1,12 @@
 from dataclasses import dataclass
 
+from loguru import logger
 from transformers import AutoTokenizer
 
 from local_phone_ai_v2.conversation.summary import (
     CallSummarizer,
     CallSummary,
 )
-
-from loguru import logger
 
 
 @dataclass

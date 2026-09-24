@@ -1,6 +1,4 @@
-import json
-from urllib import request
-
+from openai import OpenAI
 from pydantic import BaseModel, Field
 
 
@@ -16,11 +14,18 @@ class CallSummary(BaseModel):
 class CallSummarizer:
     def __init__(
         self,
+        base_url: str,
+        api_key: str,
         model: str,
         max_tokens: int,
     ) -> None:
         self._model = model
         self._max_tokens = max_tokens
+
+        self._client = OpenAI(
+            base_url=base_url,
+            api_key=api_key,
+        )
 
     def summarize(
         self,
@@ -31,7 +36,10 @@ class CallSummarizer:
             for message in messages
             if (
                 message.get("role") == "user"
-                and isinstance(message.get("content"), str)
+                and isinstance(
+                    message.get("content"),
+                    str,
+                )
             )
         )
 
@@ -48,45 +56,33 @@ class CallSummarizer:
             f"AUSSAGEN DES ANRUFERS:\n{conversation}"
         )
 
-        payload = {
-            "model": self._model,
-            "messages": [
+        response = self._client.chat.completions.create(
+            model=self._model,
+            messages=[
                 {
                     "role": "user",
                     "content": prompt,
                 }
             ],
-            "stream": False,
-            "format": CallSummary.model_json_schema(),
-            "options": {
-                "temperature": 0,
-                "num_predict": self._max_tokens,
+            temperature=0,
+            max_tokens=self._max_tokens,
+            stream=False,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "call_summary",
+                    "strict": True,
+                    "schema": CallSummary.model_json_schema(),
+                },
             },
-            "keep_alive": "30m",
-        }
-
-        data = json.dumps(
-            payload
-        ).encode("utf-8")
-
-        req = request.Request(
-            "http://localhost:11434/api/chat",
-            data=data,
-            headers={
-                "Content-Type": "application/json"
-            },
-            method="POST",
         )
 
-        with request.urlopen(
-            req,
-            timeout=120,
-        ) as response:
-            result = json.loads(
-                response.read().decode("utf-8")
-            )
+        content = response.choices[0].message.content
 
-        content = result["message"]["content"]
+        if not content:
+            raise RuntimeError(
+                "LM Studio returned an empty call summary."
+            )
 
         return CallSummary.model_validate_json(
             content

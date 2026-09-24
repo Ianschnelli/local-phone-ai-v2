@@ -7,6 +7,7 @@ from qdrant_client import QdrantClient, models
 @dataclass(frozen=True)
 class KnowledgeHit:
     text: str
+    embedding_text: str
     score: float
     content_hash: str
 
@@ -62,7 +63,7 @@ class KnowledgeRetriever:
                 with_payload=True,
             )
 
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.exception(
                 "RAG retrieval failed."
             )
@@ -81,6 +82,20 @@ class KnowledgeRetriever:
                 continue
 
             text = text.strip()
+            embedding_text = point.payload.get(
+                "embedding_text"
+            )
+
+            if not isinstance(
+                embedding_text,
+                str,
+            ):
+                embedding_text = text
+
+            embedding_text = embedding_text.strip()
+
+            if not embedding_text:
+                embedding_text = text
 
             if not text:
                 continue
@@ -101,12 +116,13 @@ class KnowledgeRetriever:
             seen.add(content_hash)
 
             hits.append(
-                KnowledgeHit(
-                    text=text,
-                    score=float(point.score),
-                    content_hash=content_hash,
-                )
+            KnowledgeHit(
+                text=text,
+                embedding_text=embedding_text,
+                score=float(point.score),
+                content_hash=content_hash,
             )
+        )
 
         logger.debug(
             "RAG retrieval: {} unique candidate(s): {}",

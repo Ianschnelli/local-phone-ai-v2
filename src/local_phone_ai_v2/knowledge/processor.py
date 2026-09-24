@@ -1,6 +1,6 @@
 import asyncio
-from loguru import logger
 
+from loguru import logger
 from pipecat.frames.frames import (
     Frame,
     LLMContextFrame,

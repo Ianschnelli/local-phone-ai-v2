@@ -5,7 +5,6 @@ from local_phone_ai_v2.services.tts_normalizer import (
     phone_number_to_words,
 )
 
-
 WEEKDAY_LABELS = {
     "monday": "Montag",
     "tuesday": "Dienstag",

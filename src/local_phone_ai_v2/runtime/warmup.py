@@ -1,12 +1,12 @@
 import json
-from urllib import request
+from urllib import error, request
 
 
 def _post_json(
     url: str,
     payload: dict,
     timeout: int = 120,
-) -> None:
+) -> dict:
     data = json.dumps(
         payload
     ).encode("utf-8")
@@ -20,58 +20,58 @@ def _post_json(
         method="POST",
     )
 
-    with request.urlopen(
-        req,
-        timeout=timeout,
-    ) as response:
-        if response.status != 200:
-            raise RuntimeError(
-                f"Warmup failed with HTTP {response.status}."
-            )
+    try:
+        with request.urlopen(
+            req,
+            timeout=timeout,
+        ) as response:
+            body = response.read().decode("utf-8")
 
-        response.read()
+    except error.HTTPError as exc:
+        body = exc.read().decode(
+            "utf-8",
+            errors="replace",
+        )
+
+        raise RuntimeError(
+            f"LM Studio warmup failed with HTTP "
+            f"{exc.code}: {body}"
+        ) from exc
+
+    except error.URLError as exc:
+        raise RuntimeError(
+            f"LM Studio is not reachable: {url}"
+        ) from exc
+
+    return json.loads(body)
 
 
 def warmup_qwen(
     config: dict,
 ) -> None:
-    try:
-        # Modell in Ollama laden und resident halten.
-        _post_json(
-            "http://localhost:11434/api/generate",
+    base_url = config["base_url"].rstrip("/")
+
+    payload = {
+        "model": config["model"],
+        "messages": [
             {
-                "model": config["model"],
-                "prompt": "",
-                "stream": False,
-                "keep_alive": "30m",
-            },
-        )
+                "role": "user",
+                "content": "Bereit.",
+            }
+        ],
+        "stream": False,
+        "temperature": config["temperature"],
+        "top_p": config["top_p"],
+        "max_tokens": 1,
+    }
 
-        # Gleichen OpenAI-kompatiblen API-Pfad
-        # kurz anstoßen, den Pipecat später nutzt.
-        payload = {
-            "model": config["model"],
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Bereit.",
-                }
-            ],
-            "stream": False,
-            "temperature": config["temperature"],
-            "top_p": config["top_p"],
-            "max_tokens": 1,
-        }
-
-        if config.get("thinking") is False:
-            payload["reasoning_effort"] = "none"
-
+    try:
         _post_json(
-            "http://localhost:11434/v1/chat/completions",
+            f"{base_url}/chat/completions",
             payload,
         )
 
     except Exception as exc:
         raise RuntimeError(
-            "Qwen warmup failed."
+            "Qwen warmup via LM Studio failed."
         ) from exc

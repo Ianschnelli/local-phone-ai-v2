@@ -1,7 +1,7 @@
+import shutil
 from collections import Counter
 from hashlib import sha256
 from pathlib import Path
-import shutil
 
 from docling.chunking import HybridChunker
 from docling.document_converter import DocumentConverter
