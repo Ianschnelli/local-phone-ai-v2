@@ -335,7 +335,7 @@ def _protect_cardinal_label_numbers(text: str) -> str:
 
 
 def normalize_tts_text(text: str) -> str:
-    """Make German assistant text easier for Kokoro/espeak to pronounce."""
+    """Make German assistant text easier for Kokoro/Piper to pronounce."""
     if not text:
         return text
 
@@ -553,13 +553,23 @@ def normalize_tts_text(text: str) -> str:
         text,
     )
 
+    # Postleitzahlen ("74072 Heilbronn") Ziffer für Ziffer, sonst liest die
+    # Stimme sie als ganze Zahl ("vierundsiebzigtausend...").
+    text = re.sub(
+        r"(?<![\w.,])(\d{5})(?=\s+[A-ZÄÖÜ][a-zäöüß])",
+        lambda match: phone_number_to_words(match.group(1)),
+        text,
+    )
+
     # Ordinalzahlen bewusst erst nach den obigen Sonderfällen behandeln.
+    # Nur mit Artikel/Präposition davor: "von 8 bis 12." am Satzende ist
+    # eine Uhrzeit und kein "zwölfter".
     text = re.sub(
         r"(?i)(?<!\w)"
         r"(am\s+|im\s+|zum\s+|vom\s+|dem\s+|den\s+|"
         r"der\s+|die\s+|das\s+|eine\s+|einer\s+|"
         r"einen\s+|einem\s+|jeden\s+|jedem\s+|"
-        r"jede\s+|jeder\s+|nach\s+der\s+(?:gefühlt\s+)?)?"
+        r"jede\s+|jeder\s+|nach\s+der\s+(?:gefühlt\s+)?)"
         r"(\d{1,6})\.(?=\s+\w|$)",
         replace_ordinal,
         text,

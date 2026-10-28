@@ -8,10 +8,12 @@ from fastembed import (
     TextEmbedding,
 )
 from qdrant_client import QdrantClient
-from sentence_transformers import CrossEncoder
 
+from local_phone_ai_v2.config.devices import resolve_torch_device
 from local_phone_ai_v2.config.loader import load_config
 from local_phone_ai_v2.config.validate import validate_config
+from local_phone_ai_v2.knowledge.embedder import DenseEmbedder
+from local_phone_ai_v2.knowledge.reranker import KnowledgeReranker
 from local_phone_ai_v2.services.stt import create_stt
 from local_phone_ai_v2.services.turn import (
     create_turn_analyzer,
@@ -251,10 +253,6 @@ def check_customer_files(config: dict) -> None:
 def check_rag_index(config: dict) -> None:
     rag = config["rag"]
 
-    if not rag["enabled"]:
-        print("[OK] RAG disabled")
-        return
-
     qdrant_path = Path(
         rag["qdrant_path"]
     )
@@ -357,20 +355,43 @@ def check_stt_runtime(config: dict) -> None:
 
     print("[OK] CTranslate2 CUDA device")
 
+def check_torch_device(config: dict) -> None:
+    import torch
+
+    requested = config["rag"]["reranker"].get("device", "auto")
+    device = resolve_torch_device(requested)
+
+    if device == "cuda":
+        free, total = torch.cuda.mem_get_info()
+        print(
+            f"[OK] Torch {torch.__version__}: {torch.cuda.get_device_name(0)}, "
+            f"VRAM frei {free / 2**30:.1f} von {total / 2**30:.1f} GB "
+            f"(reranker device: {requested})"
+        )
+        return
+
+    print(
+        f"[OK] Torch {torch.__version__}: CPU "
+        f"(reranker device: {requested})"
+    )
+
 def check_rag_models(config: dict) -> None:
     rag = config["rag"]
 
     dense_model = rag["embedding_model"]
     sparse_model = rag["sparse_model"]
 
-    dense = TextEmbedding(
-        model_name=dense_model,
-    )
-    list(
-        dense.embed(
-            ["doctor"]
+    if rag.get("embedding_backend", "fastembed") == "sentence_transformers":
+        DenseEmbedder(rag).query_vector("doctor")
+    else:
+        dense = TextEmbedding(
+            model_name=dense_model,
         )
-    )
+        list(
+            dense.embed(
+                ["doctor"]
+            )
+        )
 
     print(
         f"[OK] Dense embedding: "
@@ -394,17 +415,13 @@ def check_rag_models(config: dict) -> None:
 def check_reranker(config: dict) -> None:
     reranker = config["rag"]["reranker"]
 
-    if not reranker["enabled"]:
-        print("[OK] Reranker disabled")
-        return
-
     model = reranker["model"]
 
-    CrossEncoder(
-        model,
-        device="cpu",
-        local_files_only=True,
-    )
+    KnowledgeReranker(
+        model_name=model,
+        device=reranker.get("device", "auto"),
+        precision=reranker.get("precision", "fp32"),
+    ).rerank("doctor", [])
 
     print(
         f"[OK] Reranker: {model}"
@@ -422,6 +439,7 @@ def main() -> None:
 
     check_tts(config["tts"])
     check_rag_models(config)
+    check_torch_device(config)
     check_reranker(config)
 
     check_turn(config)

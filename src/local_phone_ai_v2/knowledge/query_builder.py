@@ -1,75 +1,38 @@
-import re
-
-FOLLOW_UP_PATTERN = re.compile(
-    r"^\s*("
-    r"und\s+)?("
-    r"dort|davon|dafür|dabei|damit|"
-    r"wie\s+sieht\s+es\s+damit\s+aus|"
-    r"was\s+ist\s+damit|"
-    r"und\s+sonst"
-    r")\s*\??\s*$",
-    re.IGNORECASE,
-)
+# Folgefragen, die ohne den vorigen Satz keinen Sinn ergeben ("und was
+# kostet das", "Und freitags?"): beginnen mit "und" oder sind kurze Fragen.
+# Dann wird die vorige Anruferäußerung mitgesucht (E-016; LLM-Umformulierung
+# brachte keinen messbaren Gewinn, E-021). "Okay, danke." ist keine Frage
+# und holt deshalb kein altes Thema zurück (Review E-023).
+SHORT_FOLLOW_UP_MAX_WORDS = 6
+REFERENCE_WORDS = {"das", "da", "dafür", "dort", "davon", "dabei", "damit", "es", "dann"}
 
 
 def build_retrieval_query(
     messages: list[dict],
 ) -> str:
-    if not messages:
+    if not messages or messages[-1].get("role") != "user":
         return ""
 
-    current = messages[-1]
+    current = messages[-1].get("content")
 
-    if current.get("role") != "user":
+    if not isinstance(current, str) or not current.strip():
         return ""
 
-    current_text = current.get("content")
-
-    if (
-        not isinstance(current_text, str)
-        or not current_text.strip()
-    ):
-        return ""
-
-    current_text = current_text.strip()
-
-    if not _needs_context(current_text):
-        return current_text
-
-    previous_messages = [
-        message
-        for message in messages[:-1]
-        if (
-            message.get("role")
-            in {"user", "assistant"}
-            and isinstance(
-                message.get("content"),
-                str,
-            )
-            and message["content"].strip()
-        )
-    ]
-
-    previous_messages = previous_messages[-2:]
-
-    context = [
-        message["content"].strip()
-        for message in previous_messages
-    ]
-
-    return " ".join(
-        [
-            *context,
-            current_text,
-        ]
+    current = current.strip()
+    words = current.split()
+    lowered = [word.lower().strip(",.!?") for word in words]
+    is_follow_up = lowered[0] == "und" or (
+        len(words) <= SHORT_FOLLOW_UP_MAX_WORDS
+        and ("?" in current or REFERENCE_WORDS.intersection(lowered))
     )
 
+    if not is_follow_up:
+        return current
 
-def _needs_context(
-    text: str,
-) -> bool:
-    return bool(
-        FOLLOW_UP_PATTERN.search(
-            text
-        )
-    )
+    for message in reversed(messages[:-1]):
+        content = message.get("content")
+
+        if message.get("role") == "user" and isinstance(content, str) and content.strip():
+            return f"{content.strip()} {current}"
+
+    return current

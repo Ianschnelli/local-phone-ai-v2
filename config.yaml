@@ -22,11 +22,11 @@ stt:
 
 llm:
   provider: lm_studio
-  base_url: http://localhost:1234/v1
+  base_url: http://127.0.0.1:1234/v1
   api_key: lm-studio
   model: qwen/qwen3-14b
   thinking: false
-  temperature: 0.5
+  temperature: 0.2
   top_p: 0.8
   max_tokens: 160
   context_window: 8192
@@ -47,23 +47,38 @@ conversation:
   rag_reserve_tokens: 1200
 
 rag:
-  enabled: true
-
-  embedding_model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  # Suche (E-015): bge-m3 über sentence-transformers, Gerät automatisch.
+  # Leichte CPU-Alternative: embedding_backend: fastembed,
+  # embedding_model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  embedding_backend: sentence_transformers
+  embedding_model: BAAI/bge-m3
+  embedding_device: auto
+  # fp16 auf der GPU: halber Grafikspeicher (E-019)
+  embedding_precision: fp16
+  # Abschnittsgröße unabhängig vom Embedding-Modell (bisheriger Stand)
+  chunk_tokenizer: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
   sparse_model: Qdrant/bm25
 
   candidate_k: 8
+  # Höchstens so viele Abschnitte an das LLM (Best Practice ca. 3, PLAN_SCHLANK)
   final_k: 3
 
-  query_timeout_secs: 0.5
+  query_timeout_secs: 1.0
   reranker_timeout_secs: 3.0
 
   reranker:
+    # Leichte CPU-Alternative: cross-encoder/mmarco-mMiniLMv2-L12-H384-v1, text: both
+    model: BAAI/bge-reranker-v2-m3
+    # auto = GPU, wenn PyTorch eine sieht, sonst CPU (config/devices.py)
+    device: auto
+    precision: fp16
+    # Eine Relevanzschwelle (bge-reranker-v2-m3, 0..1): darunter kein Wissen.
+    min_score: 0.01
+
+  # Anruferformulierungen beim Einlesen erzeugen (E-016, braucht LM Studio)
+  enrichment:
     enabled: true
-    model: cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
-    device: cpu
-    min_score: -2.3
-    score_window: 1.5
+    cache_dir: data/enrichment
 
   qdrant_path: data/qdrant
   collection: knowledge

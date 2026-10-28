@@ -25,6 +25,7 @@ class RuntimeResources:
         self.reranker = KnowledgeReranker(
             model_name=reranker_config["model"],
             device=reranker_config["device"],
+            precision=reranker_config.get("precision", "fp32"),
         )
 
         facts_path = Path(

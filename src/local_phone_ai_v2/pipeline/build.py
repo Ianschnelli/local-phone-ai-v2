@@ -18,6 +18,7 @@ from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
 from local_phone_ai_v2.conversation.instructions import build_instructions
 from local_phone_ai_v2.knowledge.processor import KnowledgeContextProcessor
+from local_phone_ai_v2.knowledge.emergency_gate import EmergencyInputGate
 from local_phone_ai_v2.runtime.resources import RuntimeResources
 from local_phone_ai_v2.services.llm import create_llm
 from local_phone_ai_v2.services.stt import create_stt
@@ -34,6 +35,34 @@ class BuiltPipeline:
     assistant_aggregator: object
     system_instruction: str
 
+
+def create_system_instruction(
+    customer_instructions: str,
+    resources: RuntimeResources,
+) -> str:
+    return build_instructions(
+        customer_instructions=customer_instructions,
+        facts_text=resources.facts.render_prompt_block(),
+    )
+
+
+def create_knowledge_processor(
+    config: dict,
+    resources: RuntimeResources,
+    emergency_gate: EmergencyInputGate,
+) -> KnowledgeContextProcessor:
+    rag = config["rag"]
+
+    return KnowledgeContextProcessor(
+        resources.knowledge,
+        resources.reranker,
+        timeout_secs=rag["query_timeout_secs"] + rag["reranker_timeout_secs"],
+        final_k=rag["final_k"],
+        min_score=rag["reranker"]["min_score"],
+        emergency_gate=emergency_gate,
+    )
+
+
 def build_pipeline(
     config: dict,
     transport,
@@ -43,8 +72,9 @@ def build_pipeline(
 
     stt = create_stt(config["stt"])
 
-    instructions = build_instructions(
-        customer_instructions= customer_instructions,
+    instructions = create_system_instruction(
+        customer_instructions,
+        resources,
     )
 
     llm = create_llm(
@@ -62,24 +92,12 @@ def build_pipeline(
 
     context = LLMContext()
 
-    knowledge = KnowledgeContextProcessor(
-        resources.knowledge,
-        resources.reranker,
-        resources.facts,
-        timeout_secs=config[
-            "rag"
-        ]["query_timeout_secs"],
-        reranker_timeout_secs=config[
-            "rag"
-        ]["reranker_timeout_secs"],
-        final_k=config["rag"]["final_k"],
+    emergency_gate = EmergencyInputGate()
 
-        min_reranker_score=(
-            config["rag"]["reranker"]["min_score"]
-        ),
-        reranker_score_window=(
-            config["rag"]["reranker"]["score_window"]
-        ),
+    knowledge = create_knowledge_processor(
+        config,
+        resources,
+        emergency_gate,
     )
 
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
@@ -112,6 +130,7 @@ def build_pipeline(
             [
                 transport.input(),
                 stt,
+                emergency_gate,
                 user_aggregator,
                 knowledge,
                 llm,

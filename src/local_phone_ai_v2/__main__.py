@@ -1,6 +1,8 @@
 import asyncio
 from pathlib import Path
 
+from loguru import logger
+
 from local_phone_ai_v2.audio.local_transport import create_local_transport
 from local_phone_ai_v2.config.loader import load_config
 from local_phone_ai_v2.config.validate import validate_config
@@ -13,6 +15,16 @@ from local_phone_ai_v2.runtime.warmup import warmup_qwen
 
 
 async def main() -> None:
+    # Zusätzlich zur Konsole in eine Datei loggen, damit Läufe nachvollziehbar
+    # sind. Achtung: enthält Gesprächstexte (B-13), nur für die Entwicklung.
+    logger.add(
+        "logs/app.log",
+        level="DEBUG",
+        encoding="utf-8",
+        rotation="10 MB",
+        retention=5,
+    )
+
     config = load_config(
         Path("config.yaml")
     )
@@ -23,9 +35,11 @@ async def main() -> None:
     try:
         resources.warmup()
 
+        customer_dir = Path(config["customer"]["facts_path"]).parent
+
         customer = load_customer_config(
-            Path("customers"),
-            "test_customer",
+            customer_dir.parent,
+            customer_dir.name,
         )
 
         transport = create_local_transport()

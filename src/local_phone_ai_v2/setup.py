@@ -12,11 +12,17 @@ from huggingface_hub import hf_hub_download
 from piper.download_voices import download_voice
 from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder
+from transformers import AutoTokenizer
 
 from local_phone_ai_v2.config.loader import load_config
 from local_phone_ai_v2.config.validate import validate_config
+from local_phone_ai_v2.knowledge.embedder import DenseEmbedder
 from local_phone_ai_v2.knowledge.ingest import (
     ingest_knowledge,
+)
+from local_phone_ai_v2.knowledge.index_manifest import (
+    build_index_fingerprint,
+    index_is_current,
 )
 
 KOKORO_REPO = "Godelaune/Kokoro-82M-ONNX-German-Martin"
@@ -183,14 +189,23 @@ def ensure_rag_models(
         f"{dense_model}"
     )
 
-    dense = TextEmbedding(
-        model_name=dense_model,
-    )
-
-    list(
-        dense.embed(
-            ["setup"]
+    if rag.get("embedding_backend", "fastembed") == "sentence_transformers":
+        # lädt das Modell beim ersten Mal herunter (E-015)
+        DenseEmbedder(rag, local_files_only=False).query_vector("setup")
+    else:
+        dense = TextEmbedding(
+            model_name=dense_model,
         )
+
+        list(
+            dense.embed(
+                ["setup"]
+            )
+        )
+
+    # Tokenizer für die Abschnittsgröße beim Einlesen
+    AutoTokenizer.from_pretrained(
+        rag.get("chunk_tokenizer", dense_model)
     )
 
     print(
@@ -226,9 +241,6 @@ def ensure_reranker(
         config["rag"]["reranker"]
     )
 
-    if not reranker["enabled"]:
-        return
-
     model = reranker["model"]
 
     print(
@@ -244,30 +256,33 @@ def ensure_reranker(
         f"Reranker model OK: {model}"
     )
 
-def ensure_rag_index(
-    config: dict,
-) -> None:
+def ensure_rag_index(config: dict) -> None:
     rag = config["rag"]
 
-    if not rag["enabled"]:
-        print("RAG disabled")
-        return
-
-    qdrant_path = Path(
-        rag["qdrant_path"]
-    )
-
+    qdrant_path = Path(rag["qdrant_path"])
     collection = rag["collection"]
 
-    if qdrant_path.exists():
-        client = QdrantClient(
-            path=str(qdrant_path)
+    facts_path = Path(config["customer"]["facts_path"])
+    customer_id = facts_path.parent.name
+    customers_directory = facts_path.parent.parent
+    knowledge_directory = facts_path.parent / "knowledge"
+
+    expected_fingerprint = build_index_fingerprint(
+        config,
+        knowledge_directory,
+    )
+
+    if (
+        qdrant_path.exists()
+        and index_is_current(
+            qdrant_path,
+            expected_fingerprint,
         )
+    ):
+        client = QdrantClient(path=str(qdrant_path))
 
         try:
-            if client.collection_exists(
-                collection
-            ):
+            if client.collection_exists(collection):
                 count = client.count(
                     collection_name=collection,
                     exact=True,
@@ -276,29 +291,16 @@ def ensure_rag_index(
                 if count > 0:
                     print(
                         f"RAG index OK: "
-                        f"{collection} "
-                        f"({count} chunks)"
+                        f"{collection} ({count} chunks)"
                     )
                     return
 
         finally:
             client.close()
 
-    facts_path = Path(
-        config["customer"]["facts_path"]
-    )
-
-    customer_id = (
-        facts_path.parent.name
-    )
-
-    customers_directory = (
-        facts_path.parent.parent
-    )
-
     print(
-        f"Building RAG index for "
-        f"{customer_id}"
+        "RAG index missing, empty or outdated. "
+        "Rebuilding..."
     )
 
     ingest_knowledge(

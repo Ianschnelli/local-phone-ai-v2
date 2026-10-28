@@ -12,8 +12,9 @@ wheels/
 # Local models / downloaded artifacts
 models/
 
-# Local runtime data / vector database
-data/qdrant/
+# Local runtime data / vector databases
+# Customer-specific databases, generated audio and temporary files
+data/
 
 # Environment / secrets
 .env

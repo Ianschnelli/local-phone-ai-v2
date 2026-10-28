@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from loguru import logger
 from qdrant_client import QdrantClient, models
 
+from local_phone_ai_v2.knowledge.embedder import DenseEmbedder
+
 
 @dataclass(frozen=True)
 class KnowledgeHit:
@@ -21,7 +23,7 @@ class KnowledgeRetriever:
         )
 
         self._collection = rag_config["collection"]
-        self._dense_model = rag_config["embedding_model"]
+        self._embedder = DenseEmbedder(rag_config)
         self._sparse_model = rag_config["sparse_model"]
 
         self._candidate_k = rag_config[
@@ -40,10 +42,7 @@ class KnowledgeRetriever:
                 collection_name=self._collection,
                 prefetch=[
                     models.Prefetch(
-                        query=models.Document(
-                            text=query,
-                            model=self._dense_model,
-                        ),
+                        query=self._embedder.query_vector(query),
                         using="dense",
                         limit=self._candidate_k,
                     ),
@@ -156,10 +155,7 @@ class KnowledgeRetriever:
             collection_name=self._collection,
             prefetch=[
                 models.Prefetch(
-                    query=models.Document(
-                        text="warmup",
-                        model=self._dense_model,
-                    ),
+                    query=self._embedder.query_vector("warmup"),
                     using="dense",
                     limit=1,
                 ),

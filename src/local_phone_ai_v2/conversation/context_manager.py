@@ -179,7 +179,9 @@ class ConversationContextManager:
         )
 
         return {
-            "role": "developer",
+            # "system" statt "developer": das Qwen-Template der Token-Zählung
+            # verwarf "developer" (Review E-022); LM Studio verstand beides.
+            "role": "system",
             "content": (
                 "STRUKTURIERTE ZUSAMMENFASSUNG "
                 "DES BISHERIGEN GESPRÄCHS:\n"

@@ -23,6 +23,48 @@ dependencies = [
     "nvidia-cudnn-cu12==9.*",
 ]
 
+# PyTorch-Variante je Rechner (Reranker/Embeddings). Genau eine wählen:
+#   uv sync --extra gpu   NVIDIA ab RTX 20xx (Turing) bis RTX 50xx, Treiber ab 580 (CUDA 13.0)
+#   uv sync --extra cpu   Rechner ohne NVIDIA-Karte
+# Der Code wählt das Gerät selbst (device: auto, config/devices.py).
+[project.optional-dependencies]
+cpu = [
+    "torch==2.14.0",
+    "torchvision==0.29.0",
+]
+gpu = [
+    "torch==2.14.0",
+    "torchvision==0.29.0",
+]
+
+[tool.uv]
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "gpu" },
+    ],
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu130", extra = "gpu" },
+]
+torchvision = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu130", extra = "gpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
 [project.scripts]
 local-phone-ai-v2 = "local_phone_ai_v2.__main__:main"
 

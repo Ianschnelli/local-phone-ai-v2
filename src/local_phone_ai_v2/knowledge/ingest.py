@@ -11,6 +11,16 @@ from docling_core.transforms.chunker.tokenizer.huggingface import (
 from qdrant_client import QdrantClient, models
 from transformers import AutoTokenizer
 
+from local_phone_ai_v2.knowledge.embedder import DenseEmbedder
+from local_phone_ai_v2.knowledge.enrichment import (
+    ChunkEnricher,
+    build_enriched_embedding_text,
+)
+from local_phone_ai_v2.knowledge.index_manifest import (
+    build_index_fingerprint,
+    write_index_manifest,
+)
+
 
 def _content_hash(text: str) -> str:
     return sha256(
@@ -121,13 +131,24 @@ def ingest_knowledge(
             f"{knowledge_directory}"
         )
 
-    embedding_model = rag_config[
-        "embedding_model"
-    ]
+    initial_fingerprint = build_index_fingerprint(
+        config,
+        knowledge_directory,
+    )
+
+    embedder = DenseEmbedder(rag_config)
+
+    # Abschnittsgröße unabhängig vom Embedding-Modell, damit ein Modellwechsel
+    # die Abschnitte nicht verändert (E-015). Standard: bisheriges Modell.
+    chunk_tokenizer = rag_config.get(
+        "chunk_tokenizer",
+        rag_config["embedding_model"],
+    )
 
     tokenizer = HuggingFaceTokenizer(
         tokenizer=AutoTokenizer.from_pretrained(
-            embedding_model
+            chunk_tokenizer,
+            local_files_only=True,
         ),
     )
 
@@ -136,6 +157,19 @@ def ingest_knowledge(
     )
 
     converter = DocumentConverter()
+
+    # Optionale Anreicherung mit Anruferformulierungen (E-016), braucht LM Studio.
+    enrichment_config = rag_config.get("enrichment") or {}
+    enricher = None
+
+    if enrichment_config.get("enabled"):
+        enricher = ChunkEnricher(
+            llm_config=config["llm"],
+            cache_path=(
+                Path(enrichment_config.get("cache_dir", "data/enrichment"))
+                / f"{customer_id}.json"
+            ),
+        )
 
     documents: list[str] = []
     metadata: list[dict] = []
@@ -166,6 +200,21 @@ def ingest_knowledge(
             if not embedding_text:
                 embedding_text = text
 
+            enrichment = None
+
+            if enricher is not None:
+                headings = chunk.meta.headings or [source]
+                enrichment = enricher.enrich(
+                    content_hash=_content_hash(text),
+                    title=headings[0],
+                    heading=headings[-1],
+                    text=text,
+                )
+                embedding_text = build_enriched_embedding_text(
+                    embedding_text,
+                    enrichment,
+                )
+
             print("\n" + "=" * 80)
             print(f"SOURCE: {source}")
             print("\nTEXT:")
@@ -189,11 +238,15 @@ def ingest_knowledge(
                     "content_hash": content_hash,
                     "customer_id": customer_id,
                     "source": source,
+                    "enrichment": enrichment,
                     "docling": (
                         chunk.meta.export_json_dict()
                     ),
                 }
             )
+
+    if enricher is not None:
+        enricher.save()
 
     if not documents:
         raise ValueError(
@@ -220,26 +273,27 @@ def ingest_knowledge(
         for payload in metadata
     )
 
-    # Qdrant Local + Windows:
-    # Do not delete/recreate a collection
-    # inside the same local client.
-    #
-    # Start from a completely fresh local
-    # storage directory instead.
-    if qdrant_path.exists():
-        try:
-            shutil.rmtree(
-                qdrant_path
-            )
-        except OSError as exc:
-            raise RuntimeError(
-                "Could not reset local Qdrant "
-                "storage. Make sure start.cmd "
-                "is not running."
-            ) from exc
+    # Build a new index without touching the active one.
+    staging_path = qdrant_path.with_name(
+        qdrant_path.name + ".__building"
+    )
+    backup_path = qdrant_path.with_name(
+        qdrant_path.name + ".__backup"
+    )
+
+    # Never overwrite a backup left by a failed rebuild.
+    if backup_path.exists():
+        raise RuntimeError(
+            f"Existing Qdrant backup: {backup_path}. "
+            "Inspect it before rebuilding."
+        )
+
+    # An incomplete staging index can be rebuilt.
+    if staging_path.exists():
+        shutil.rmtree(staging_path)
 
     client = QdrantClient(
-        path=str(qdrant_path),
+        path=str(staging_path),
     )
 
     try:
@@ -249,9 +303,7 @@ def ingest_knowledge(
                 dense_vector_name: (
                     models.VectorParams(
                         size=(
-                            client.get_embedding_size(
-                                embedding_model
-                            )
+                            embedder.size(client)
                         ),
                         distance=(
                             models.Distance.COSINE
@@ -282,12 +334,7 @@ def ingest_knowledge(
             models.PointStruct(
                 id=index,
                 vector={
-                    dense_vector_name: (
-                        models.Document(
-                            text=text,
-                            model=embedding_model,
-                        )
-                    ),
+                    dense_vector_name: dense_vector,
                     sparse_vector_name: (
                         models.Document(
                             text=text,
@@ -300,10 +347,12 @@ def ingest_knowledge(
             for index, (
                 text,
                 payload,
+                dense_vector,
             ) in enumerate(
                 zip(
                     documents,
                     metadata,
+                    embedder.document_vectors(documents),
                 )
             )
         ]
@@ -322,11 +371,9 @@ def ingest_knowledge(
     finally:
         client.close()
 
-    # Reopen from disk and verify again.
-    # This is the exact persisted state
-    # start.cmd will see afterwards.
+    # Reopen the staged index from disk and verify it.
     client = QdrantClient(
-        path=str(qdrant_path),
+        path=str(staging_path),
     )
 
     try:
@@ -338,6 +385,55 @@ def ingest_knowledge(
 
     finally:
         client.close()
+
+    # Ensure source documents did not change during indexing.
+    final_fingerprint = build_index_fingerprint(
+        config,
+        knowledge_directory,
+    )
+
+    if final_fingerprint != initial_fingerprint:
+        raise RuntimeError(
+            "Knowledge documents changed during indexing. "
+            "The existing Qdrant index remains untouched."
+        )
+
+    # Store the manifest inside the verified staging index.
+    write_index_manifest(
+        staging_path,
+        final_fingerprint,
+    )
+
+    # Activate the verified index.
+    # All Qdrant clients must be closed.
+    had_active_index = qdrant_path.exists()
+
+    if had_active_index:
+        try:
+            qdrant_path.rename(backup_path)
+        except OSError as exc:
+            raise RuntimeError(
+                "Could not back up the active Qdrant index. "
+                "Make sure start.cmd is not running."
+            ) from exc
+
+    try:
+        staging_path.rename(qdrant_path)
+    except OSError:
+        # Restore the original index if activation fails.
+        if had_active_index:
+            backup_path.rename(qdrant_path)
+        raise
+
+    # The new index is active; clean up the old backup.
+    if had_active_index:
+        try:
+            shutil.rmtree(backup_path)
+        except OSError as exc:
+            print(
+                f"WARNING: Old Qdrant backup remains "
+                f"at {backup_path}: {exc}"
+            )
 
     print(
         f"Indexed {len(documents)} chunks "
@@ -363,7 +459,10 @@ if __name__ == "__main__":
         config
     )
 
+    customer_dir = Path(config["customer"]["facts_path"]).parent
+
     ingest_knowledge(
         config=config,
-        customer_id="test_customer",
+        customer_id=customer_dir.name,
+        customers_directory=customer_dir.parent,
     )

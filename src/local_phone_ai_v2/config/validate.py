@@ -1,3 +1,6 @@
+from local_phone_ai_v2.config.devices import VALID_TORCH_DEVICES
+
+
 def validate_config(config: dict) -> None:
     required_sections = (
         "audio",
@@ -33,6 +36,14 @@ def validate_config(config: dict) -> None:
                 f"{device}. "
                 "Use 'cpu' or 'cuda'."
             )
+
+    reranker_device = config["rag"]["reranker"].get("device")
+
+    if reranker_device not in VALID_TORCH_DEVICES:
+        raise ValueError(
+            f"Invalid device for rag.reranker: {reranker_device}. "
+            "Use 'auto', 'cpu' or 'cuda'."
+        )
 
     llm = config["llm"]
 
@@ -240,17 +251,6 @@ def validate_config(config: dict) -> None:
             "rag must be a section."
         )
 
-    enabled = rag.get(
-        "enabled"
-    )
-
-    if not isinstance(
-        enabled,
-        bool,
-    ):
-        raise TypeError(
-            "rag.enabled must be true or false."
-        )
 
     embedding_model = rag.get(
         "embedding_model"
